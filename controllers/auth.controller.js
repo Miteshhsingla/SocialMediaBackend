@@ -16,18 +16,25 @@ const registerUser = async (req,res)=>{
     try {
         const checkUser = await pool.query('SELECT * FROM users WHERE email = $1',[email]);
     
-        if(checkUser.rows.length > 0) return res.status(400).json({ message: 'User already exists' });
+        if(checkUser.rows.length > 0) return res.status(400).json({
+            statusCode: 400,
+            message: 'User already exists' });
     
         const hashedPassword = await bcrypt.hash(password,10);
     
         const newUser = await pool.query('INSERT INTO users(username,email,password) VALUES ($1,$2,$3) RETURNING *',[username,email,hashedPassword]);
     
-        return res.json(
-            new ApiResponse(201,newUser.rows[0],"User Created Successfully")
-        )
+        return res.status(201).json({
+            statusCode: 201,
+            data: newUser.rows[0],
+            message: 'User Created Successfully',
+        });
     } catch (error) {
         console.error('Error during user registration:', error);
-        res.status(500).json({ message: 'Server error' });
+        return res.status(500).json({
+            statusCode: 500,
+            message: 'Internal Server Error',
+        });
     }
     
 
@@ -45,14 +52,20 @@ const {email, password} = req.body;
 try {
     const userQuery = await pool.query('SELECT * FROM users WHERE email = $1',[email]);
     if(userQuery.rows.length === 0){
-        return res.status(401).json({ message : 'Invalid email or password'});
+        return res.status(401).json({
+            statusCode: 401,
+            message: 'Invalid email or password',
+        });
     }
 
     const user = userQuery.rows[0];
 
     const isValidPass = await bcrypt.compare(password,user.password);
     if(!isValidPass){
-        return res.status(401).json({ message : 'Incorrect password'});
+        return res.status(401).json({
+            statusCode: 401,
+            message: 'Incorrect password',
+        });
     }
 
     const token = jwt.sign({userId : user.id, email : user.email},
@@ -60,11 +73,17 @@ try {
         {expiresIn : '1h'}
     );
 
-    res.json({message:'Login Successul',token});
-
+    return res.status(200).json({
+        statusCode: 200,
+        message: 'Login Successful',
+        token,
+    });
 } catch (error) {
-    console.log('error during login', error);
-    res.status(500).json({message:'Server Error'});
+    console.error('Error during login:', error);
+        return res.status(500).json({
+            statusCode: 500,
+            message: 'Internal Server Error',
+        });
 }
 
 };

@@ -1,4 +1,5 @@
 const pool = require('../config.js/db');
+const redisClient = require('../redis'); 
 
 const followUser = async(req,res)=>{
 
@@ -61,4 +62,48 @@ const unfollowUser = async (req, res) => {
     }
 };
 
-module.exports = {followUser,unfollowUser};
+
+const searchUser = async (req, res) => {
+  const { query } = req.query; // Extract search query from request
+
+  if (!query || query.trim() === '') {
+    return res.status(400).json({ message: 'Search query is required' });
+  }
+
+  try {
+    // Check if search results exist in Redis
+    const cachedResults = await redisClient.get(`search:${query}`);
+    if (cachedResults) {
+      return res.status(200).json({
+        source: 'cache',
+        users: JSON.parse(cachedResults),
+      });
+    }
+
+    // Query database for matching users
+    const searchResults = await pool.query(
+      "SELECT id, username, email FROM users WHERE username ILIKE $1 OR email ILIKE $1",
+      [`%${query}%`]
+    );
+
+    if (searchResults.rowCount === 0) {
+      return res.status(404).json({ message: 'No users found' });
+    }
+
+    const users = searchResults.rows;
+
+    // Cache the results in Redis (set expiry time of 1 hour)
+    await redisClient.setEx(`search:${query}`, 3600, JSON.stringify(users));
+
+    res.status(200).json({
+      source: 'database',
+      users,
+    });
+  } catch (error) {
+    console.error(error.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+
+module.exports = {followUser,unfollowUser, searchUser};
